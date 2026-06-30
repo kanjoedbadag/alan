@@ -1,17 +1,23 @@
-// ================================
-// DISCORD VOICE BOT - STAY IN VC
-// ================================
+// ==========================================
+// DISCORD VOICE BOT + INTEGRASI GEMINI AI
+// ==========================================
 
 const { Client, GatewayIntentBits } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
+const { GoogleGenAI } = require('@google/genai'); // Library resmi terbaru Google AI
 const express = require('express');
 
-// ===== KEEP REPLIT AWAKE =====
+// ===== KEEP REPLIT / RAILWAY AWAKE =====
 const app = express();
 app.get('/', (req, res) => {
-  res.send('🤖 Voice Bot is Running!');
+  res.send('🤖 AI Voice Bot is Running!');
 });
-app.listen(3000, () => console.log('✅ Keep-alive server ready'));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`✅ Keep-alive server ready on port ${PORT}`));
+
+// ===== INITIALIZE GEMINI AI =====
+// Mengambil API Key dari environment variables Railway
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // ===== DISCORD BOT SETUP =====
 const client = new Client({
@@ -29,90 +35,107 @@ const audioPlayer = createAudioPlayer();
 // ===== WHEN BOT IS READY =====
 client.once('clientReady', (c) => {
     console.log(`✅ Logged in as ${c.user.tag}!`);
-    console.log(`📢 Use !in`);
-    console.log(`📢 Use !out`);
+    console.log(`📢 Hubungi saya di chat, saya akan menjawab menggunakan AI!`);
 });
 
 // ===== HANDLE MESSAGES =====
 client.on('messageCreate', async message => {
-  // Ignore other bots and DMs
+  // Abaikan bot lain dan DM
   if (message.author.bot || !message.guild) return;
 
-  // !join - Join voice channel
+  // ----------------------------------------
+  // FITUR 1: PERINTAH SUARA (!in dan !out)
+  // ----------------------------------------
+  
   if (message.content.toLowerCase() === '!in') {
-    try {
-      // Leave current VC if in one
-      if (voiceConnection) {
-        voiceConnection.destroy();
-      }
+    const voiceChannel = message.member.voice.channel;
+    if (!voiceChannel) {
+      return message.reply('❌ Kamu harus masuk ke voice channel terlebih dahulu!');
+    }
 
-      // Join new VC
+    try {
+      if (voiceConnection) voiceConnection.destroy();
+
       voiceConnection = joinVoiceChannel({
-        channelId: message.member.voice.channel.id,
+        channelId: voiceChannel.id,
         guildId: message.guild.id,
         adapterCreator: message.guild.voiceAdapterCreator,
-        selfDeaf: false, // Bot deafens itself (won't hear others)
-        selfMute: false // Bot can speak if needed
+        selfDeaf: false,
+        selfMute: false
       });
 
-      // Wait for connection
-      await entersState(voiceConnection, VoiceConnectionStatus.Ready, 30_000);
-      
-      // Subscribe to audio player (plays silent audio)
-      voiceConnection.subscribe(audioPlayer);
-      
-      message.reply(`✅ Joined **${message.member.voice.channel.name}**! I'll stay here until you use \`!leave\`.`);
-      console.log(`🔊 Joined VC: ${message.member.voice.channel.name}`);
-      
+      voiceConnection.on(VoiceConnectionStatus.Ready, () => {
+        console.log(`🔊 Joined VC: ${voiceChannel.name}`);
+        voiceConnection.subscribe(audioPlayer);
+      });
+
+      message.reply(`✅ Mencoba masuk ke **${voiceChannel.name}**...`);
+      return;
     } catch (error) {
       console.error('Join error:', error);
+      return message.reply('❌ Gagal masuk karena masalah jaringan hosting.');
     }
   }
 
-  // !leave - Leave voice channel
   if (message.content.toLowerCase() === '!out') {
     if (voiceConnection) {
       voiceConnection.destroy();
       voiceConnection = null;
-      message.reply('✅ Left the voice channel!');
-      console.log('🔇 Left voice channel');
+      return message.reply('✅ Berhasil keluar dari voice channel!');
     } else {
-      message.reply('❌ I\'m not in a voice channel!');
+      return message.reply('❌ Aku sedang tidak berada di voice channel mana pun!');
     }
   }
 
-  // !ping - Check if bot is alive
-  if (message.content.toLowerCase() === '!ping') {
-    const latency = Date.now() - message.createdTimestamp;
-    message.reply(`🏓 Pong! Latency: ${latency}ms | Voice: ${voiceConnection ? 'Connected 🔊' : 'Not connected 🔇'}`);
-  }
-});
+  // ----------------------------------------
+  // FITUR 2: JAWABAN OTOMATIS MENGGUNAKAN AI
+  // ----------------------------------------
+  
+  // Bot akan menjawab jika di-mention ATAU jika kamu ingin dia menjawab semua chat, hapus baris "if (message.mentions...)"
+  if (message.mentions.has(client.user) || message.content.startsWith('!tanya ')) {
+    
+    // Ambil teks pertanyaan (hilangkan mention atau kata !tanya)
+    const prompt = message.content.replace(/<@!?\d+>/g, '').replace('!tanya ', '').trim();
+    
+    if (!prompt) {
+      return message.reply('Ada yang bisa saya bantu? Silakan ketik pertanyaanmu.');
+    }
 
-// ===== HANDLE VOICE DISCONNECTS =====
-client.on('voiceStateUpdate', (oldState, newState) => {
-  // If bot was moved or disconnected
-  if (oldState.id === client.user.id && !newState.channelId && voiceConnection) {
-    console.log('⚠️ Bot was disconnected from voice!');
-    voiceConnection = null;
+    // Beri tanda kalau bot sedang mengetik/berpikir
+    await message.channel.sendTyping();
+
+    try {
+      // Memanggil model Gemini 2.5 Flash (Model tercepat dan terbaru)
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+      });
+
+      // Kirim jawaban AI ke Discord
+      if (response.text) {
+        // Potong jawaban jika melebihi batas karakter Discord (2000 karakter)
+        const replyText = response.text.substring(0, 1950);
+        message.reply(replyText);
+      } else {
+        message.reply('Maaf, saya tidak bisa memproses jawaban untuk pertanyaan itu.');
+      }
+
+    } catch (error) {
+      console.error('Gemini AI Error:', error);
+      message.reply('❌ Maaf, otak AI saya sedang mengalami gangguan teknis.');
+    }
   }
 });
 
 // ===== ERROR HANDLING =====
-audioPlayer.on('error', error => {
-  console.error('Audio player error:', error);
-});
-
 process.on('unhandledRejection', error => {
   console.error('Unhandled promise rejection:', error);
 });
 
 // ===== START THE BOT =====
-// Get token from Secrets (we'll set this up next)
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
   console.error('❌ ERROR: No Discord token found!');
-  console.log('💡 Go to Tools → Secrets and add DISCORD_TOKEN');
 } else {
   client.login(token);
-
 }
