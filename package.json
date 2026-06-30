@@ -1,11 +1,18 @@
-"dependencies": {
-  "@discordjs/voice": "^0.17.0",
-  "discord.js": "^14.16.3",
-  "express": "^4.19.2"
-},
-"scripts": {
-  "start": "node index.js"
-},
-"engines": {
-  "node": ">=20.0.0"
+{
+  "name": "discord-voice-ai-bot",
+  "version": "1.0.0",
+  "description": "Discord Voice and AI Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@discordjs/voice": "^0.17.0",
+    "discord.js": "^14.16.3",
+    "express": "^4.19.2",
+    "tweetnacl": "^1.0.3"
+  },
+  "engines": {
+    "node": "20.x"
+  }
 }
