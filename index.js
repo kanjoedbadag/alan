@@ -1,5 +1,5 @@
 // ==========================================
-// DISCORD VOICE BOT + INTEGRASI GEMINI AI (BULLETPROOF)
+// DISCORD VOICE BOT + INTEGRASI GEMINI AI (FIXED STRUCTURE)
 // ==========================================
 
 const { Client, GatewayIntentBits } = require('discord.js');
@@ -82,7 +82,7 @@ client.on('messageCreate', async message => {
   }
 
   // ----------------------------------------
-  // FITUR 2: JAWABAN OTOMATIS MENGGUNAKAN AI (Pake Fetch Langsung)
+  // FITUR 2: JAWABAN OTOMATIS MENGGUNAKAN AI
   // ----------------------------------------
   const isMentioned = message.mentions.has(client.user);
   const isCommand = message.content.startsWith('!tanya ');
@@ -105,7 +105,7 @@ client.on('messageCreate', async message => {
     try {
       await message.channel.sendTyping();
 
-      // Menggunakan fetch bawaan Node.js (Anti-crash akibat library versioning)
+      // Menggunakan fetch bawaan Node.js 20+
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       
       const response = await fetch(url, {
@@ -132,16 +132,19 @@ client.on('messageCreate', async message => {
   }
 });
 
-// Anti-crash global agar Railway tidak mematikan container saat ada error kecil
+// ===== GLOBAL ANTI-CRASH =====
 process.on('unhandledRejection', error => {
   console.error('Unhandled promise rejection:', error);
 });
+
 process.on('uncaughtException', error => {
   console.error('Uncaught Exception:', error);
 });
 
+// ===== START THE BOT =====
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
   console.error('❌ ERROR: No Discord token found!');
 } else {
   client.login(token);
+}
