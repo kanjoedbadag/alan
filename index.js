@@ -1,10 +1,10 @@
 // ==========================================
-// DISCORD VOICE BOT + INTEGRASI GEMINI AI
+// DISCORD VOICE BOT + INTEGRASI GEMINI AI (FIXED)
 // ==========================================
 
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
-const { GoogleGenAI } = require('@google/genai'); // Library resmi terbaru Google AI
+const { GoogleGenAI } = require('@google/genai'); 
 const express = require('express');
 
 // ===== KEEP REPLIT / RAILWAY AWAKE =====
@@ -16,8 +16,8 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Keep-alive server ready on port ${PORT}`));
 
 // ===== INITIALIZE GEMINI AI =====
-// Mengambil API Key dari environment variables Railway
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Inisialisasi aman: Jika key belum ada, bot tidak akan langsung crash saat start
+const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 // ===== DISCORD BOT SETUP =====
 const client = new Client({
@@ -35,12 +35,12 @@ const audioPlayer = createAudioPlayer();
 // ===== WHEN BOT IS READY =====
 client.once('clientReady', (c) => {
     console.log(`✅ Logged in as ${c.user.tag}!`);
-    console.log(`📢 Hubungi saya di chat, saya akan menjawab menggunakan AI!`);
+    console.log(`📢 Fitur Voice & AI Siap Digunakan!`);
 });
 
 // ===== HANDLE MESSAGES =====
 client.on('messageCreate', async message => {
-  // Abaikan bot lain dan DM
+  // PROTEKSI UTAMA: Jangan merespons jika pesan berasal dari bot itu sendiri atau bot lain
   if (message.author.bot || !message.guild) return;
 
   // ----------------------------------------
@@ -91,38 +91,46 @@ client.on('messageCreate', async message => {
   // FITUR 2: JAWABAN OTOMATIS MENGGUNAKAN AI
   // ----------------------------------------
   
-  // Bot akan menjawab jika di-mention ATAU jika kamu ingin dia menjawab semua chat, hapus baris "if (message.mentions...)"
-  if (message.mentions.has(client.user) || message.content.startsWith('!tanya ')) {
+  const isMentioned = message.mentions.has(client.user);
+  const isCommand = message.content.startsWith('!tanya ');
+
+  if (isMentioned || isCommand) {
     
-    // Ambil teks pertanyaan (hilangkan mention atau kata !tanya)
-    const prompt = message.content.replace(/<@!?\d+>/g, '').replace('!tanya ', '').trim();
-    
-    if (!prompt) {
-      return message.reply('Ada yang bisa saya bantu? Silakan ketik pertanyaanmu.');
+    // Jika API Key lupa dimasukkan di Railway
+    if (!ai) {
+      return message.reply('❌ Fitur AI belum aktif. Pastikan GEMINI_API_KEY sudah diisi di Variables Railway!');
     }
 
-    // Beri tanda kalau bot sedang mengetik/berpikir
-    await message.channel.sendTyping();
+    // Bersihkan teks dari mention atau prefix perintah
+    const prompt = message.content
+      .replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '')
+      .replace('!tanya ', '')
+      .trim();
+    
+    if (!prompt) {
+      return message.reply('Ada yang bisa saya bantu? Silakan ketik pertanyaanmu setelah mention atau perintah.');
+    }
 
     try {
-      // Memanggil model Gemini 2.5 Flash (Model tercepat dan terbaru)
+      // Efek bot sedang mengetik di Discord
+      await message.channel.sendTyping();
+
+      // Panggilan API Gemini 2.5 Flash yang benar
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
-        contents: prompt,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
       });
 
-      // Kirim jawaban AI ke Discord
-      if (response.text) {
-        // Potong jawaban jika melebihi batas karakter Discord (2000 karakter)
+      if (response && response.text) {
         const replyText = response.text.substring(0, 1950);
-        message.reply(replyText);
+        await message.reply(replyText);
       } else {
-        message.reply('Maaf, saya tidak bisa memproses jawaban untuk pertanyaan itu.');
+        await message.reply('Maaf, saya tidak mendapatkan jawaban dari otak AI saya.');
       }
 
     } catch (error) {
       console.error('Gemini AI Error:', error);
-      message.reply('❌ Maaf, otak AI saya sedang mengalami gangguan teknis.');
+      await message.reply('❌ Maaf, proses AI mengalami kendala teknis saat menjawab.');
     }
   }
 });
