@@ -1,5 +1,5 @@
 // =======================================================
-// DISCORD VOICE BOT + JAWABAN GEMINI AI (PERSONA KASAR)
+// DISCORD VOICE BOT + JAWABAN GEMINI AI (PARHAN EDITION)
 // =======================================================
 
 const { Client, GatewayIntentBits } = require('discord.js');
@@ -9,7 +9,7 @@ const express = require('express');
 // ===== KEEP RAILWAY AWAKE =====
 const app = express();
 app.get('/', (req, res) => {
-  res.send('🤖 AI Voice Bot (Ketus Edition) is Running!');
+  res.send('🤖 AI Voice Bot (Parhan Bobo Edition) is Running!');
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Keep-alive server ready on port ${PORT}`));
@@ -30,7 +30,7 @@ const audioPlayer = createAudioPlayer();
 // ===== WHEN BOT IS READY =====
 client.once('clientReady', (c) => {
     console.log(`✅ Logged in as ${c.user.tag}!`);
-    console.log(`📢 Fitur Voice & AI Kasar udah siap. Lu mau nanya apaan?`);
+    console.log(`📢 Bot ready. Jangan diganggu, ntar parhan bangun.`);
 });
 
 // ===== HANDLE MESSAGES =====
@@ -93,7 +93,6 @@ client.on('messageCreate', async message => {
       return message.reply('❌ API Key Gemini belum lu pasang di Variables Railway!');
     }
 
-    // Bersihkan teks dari mention bot atau prefix !tanya
     const prompt = message.content
       .replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '')
       .replace('!tanya ', '')
@@ -104,7 +103,6 @@ client.on('messageCreate', async message => {
     }
 
     try {
-      // Efek bot sedang mengetik di Discord
       await message.channel.sendTyping();
 
       const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -114,10 +112,15 @@ client.on('messageCreate', async message => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          // INSTRUKSI PERSONA: Kasar, ketus, ngegas, langsung inti masalah
           systemInstruction: {
-            parts: [{ text: "Kamu adalah asisten yang sangat ketus, sinis, kasar, dan malas melayani user. Jawab pertanyaan sesingkat dan sepadat mungkin, langsung ke inti masalah tanpa basa-basi. Gunakan gaya bahasa kasual, sedikit ngegas, atau meremehkan jika perlu (seperti: 'Gini aja gak tahu', 'Nih', 'Pikir sendiri'). Maksimal 1-2 kalimat. Jangan pernah pakai kata halo atau ramah lainnya." }]
-          }
+            parts: [{ text: "Kamu adalah asisten chat Discord yang bersikap sangat ketus, cuek, sinis, dan malas melayani user. Langsung jawab ke inti masalah tanpa basa-basi (maksimal 1-2 kalimat). Gunakan gaya bahasa kasual, ngegas, atau meremehkan secara sarkas (contoh: 'Gini aja gak tahu', 'Nih', 'Pikir sendiri'). Jangan pernah pakai kata halo atau ramah lainnya." }]
+          },
+          safetySettings: [
+            { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+            { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+          ]
         })
       });
 
@@ -127,29 +130,44 @@ client.on('messageCreate', async message => {
         const replyText = data.candidates[0].content.parts[0].text.substring(0, 1950);
         await message.reply(replyText);
       } else {
+        // AI nolak jawab/kosong tapi ga bikin crash
         await message.reply('Gagal dapet jawaban. AI-nya males jawab paling.');
       }
 
     } catch (error) {
       console.error('Gemini AI Error:', error);
-      await message.reply('❌ Error. Otak gw lagi pusing, jgn nanya dulu.');
+      await message.reply('parhan lagi bobo');
     }
   }
 });
 
-// ===== GLOBAL ANTI-CRASH SYSTEM =====
+// ===== GLOBAL ANTI-CRASH SYSTEM (PARHAN LAGI BOBO) =====
+// Mengirim pesan otomatis ke channel saat terjadi error fatal di latar belakang
+
+const kirimPesanSistem = async (errorLog) => {
+  try {
+    // AMBIL ID CHANNEL otomatis dari tempat bot terakhir aktif atau via Env Variable
+    // Supaya aman, kita cari text channel pertama yang bisa diakses bot untuk ngasih tau
+    const channel = client.channels.cache.filter(c => c.type === 0).first(); 
+    if (channel) {
+      await channel.send('💤 parhan lagi bobo');
+    }
+  } catch (e) {
+    console.error('Gagal ngirim pesan anti-crash:', e);
+  }
+};
+
 process.on('unhandledRejection', error => {
   console.error('Unhandled promise rejection:', error);
+  kirimPesanSistem(error);
 });
 
 process.on('uncaughtException', error => {
   console.error('Uncaught Exception:', error);
+  kirimPesanSistem(error);
 });
 
 // ===== START THE BOT =====
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
-  console.error('❌ ERROR: No Discord token found in Environment Variables!');
-} else {
-  client.login(token);
-}
+  console.error('❌ ERROR: No Discord
