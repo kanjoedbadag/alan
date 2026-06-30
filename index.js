@@ -29,7 +29,7 @@ const audioPlayer = createAudioPlayer();
 // ===== WHEN BOT IS READY =====
 client.once('clientReady', (c) => {
     console.log(`✅ Logged in as ${c.user.tag}!`);
-    console.log(`📢 Use !sinicil`);
+    console.log(`📢 Use !sinihan`);
     console.log(`📢 Use !out`);
 });
 
