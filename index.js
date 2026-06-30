@@ -1,10 +1,9 @@
 // ==========================================
-// DISCORD VOICE BOT + INTEGRASI GEMINI AI (FIXED)
+// DISCORD VOICE BOT + INTEGRASI GEMINI AI (BULLETPROOF)
 // ==========================================
 
 const { Client, GatewayIntentBits } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
-const { GoogleGenAI } = require('@google/genai'); 
+const { joinVoiceChannel, createAudioPlayer, VoiceConnectionStatus } = require('@discordjs/voice');
 const express = require('express');
 
 // ===== KEEP REPLIT / RAILWAY AWAKE =====
@@ -14,10 +13,6 @@ app.get('/', (req, res) => {
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Keep-alive server ready on port ${PORT}`));
-
-// ===== INITIALIZE GEMINI AI =====
-// Inisialisasi aman: Jika key belum ada, bot tidak akan langsung crash saat start
-const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
 // ===== DISCORD BOT SETUP =====
 const client = new Client({
@@ -40,13 +35,12 @@ client.once('clientReady', (c) => {
 
 // ===== HANDLE MESSAGES =====
 client.on('messageCreate', async message => {
-  // PROTEKSI UTAMA: Jangan merespons jika pesan berasal dari bot itu sendiri atau bot lain
+  // Jangan merespons jika pesan dari bot sendiri atau bot lain
   if (message.author.bot || !message.guild) return;
 
   // ----------------------------------------
   // FITUR 1: PERINTAH SUARA (!in dan !out)
   // ----------------------------------------
-  
   if (message.content.toLowerCase() === '!in') {
     const voiceChannel = message.member.voice.channel;
     if (!voiceChannel) {
@@ -88,62 +82,66 @@ client.on('messageCreate', async message => {
   }
 
   // ----------------------------------------
-  // FITUR 2: JAWABAN OTOMATIS MENGGUNAKAN AI
+  // FITUR 2: JAWABAN OTOMATIS MENGGUNAKAN AI (Pake Fetch Langsung)
   // ----------------------------------------
-  
   const isMentioned = message.mentions.has(client.user);
   const isCommand = message.content.startsWith('!tanya ');
 
   if (isMentioned || isCommand) {
-    
-    // Jika API Key lupa dimasukkan di Railway
-    if (!ai) {
-      return message.reply('❌ Fitur AI belum aktif. Pastikan GEMINI_API_KEY sudah diisi di Variables Railway!');
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return message.reply('❌ API Key Gemini belum dimasukkan di Variables Railway!');
     }
 
-    // Bersihkan teks dari mention atau prefix perintah
     const prompt = message.content
       .replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '')
       .replace('!tanya ', '')
       .trim();
     
     if (!prompt) {
-      return message.reply('Ada yang bisa saya bantu? Silakan ketik pertanyaanmu setelah mention atau perintah.');
+      return message.reply('Ada yang bisa saya bantu? Silakan ketik pertanyaanmu.');
     }
 
     try {
-      // Efek bot sedang mengetik di Discord
       await message.channel.sendTyping();
 
-      // Panggilan API Gemini 2.5 Flash yang benar
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      // Menggunakan fetch bawaan Node.js (Anti-crash akibat library versioning)
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
       });
 
-      if (response && response.text) {
-        const replyText = response.text.substring(0, 1950);
+      const data = await response.json();
+      
+      if (data.candidates && data.candidates[0].content.parts[0].text) {
+        const replyText = data.candidates[0].content.parts[0].text.substring(0, 1950);
         await message.reply(replyText);
       } else {
-        await message.reply('Maaf, saya tidak mendapatkan jawaban dari otak AI saya.');
+        await message.reply('Maaf, saya tidak mendapatkan jawaban dari AI.');
       }
 
     } catch (error) {
       console.error('Gemini AI Error:', error);
-      await message.reply('❌ Maaf, proses AI mengalami kendala teknis saat menjawab.');
+      await message.reply('❌ Terjadi kendala teknis saat menghubungi AI.');
     }
   }
 });
 
-// ===== ERROR HANDLING =====
+// Anti-crash global agar Railway tidak mematikan container saat ada error kecil
 process.on('unhandledRejection', error => {
   console.error('Unhandled promise rejection:', error);
 });
+process.on('uncaughtException', error => {
+  console.error('Uncaught Exception:', error);
+});
 
-// ===== START THE BOT =====
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
   console.error('❌ ERROR: No Discord token found!');
 } else {
   client.login(token);
-}
