@@ -1,5 +1,5 @@
 // =======================================================
-// DISCORD VOICE BOT + JAWABAN GEMINI AI (PARHAN EDITION)
+// DISCORD VOICE BOT + JAWABAN GEMINI AI (KASAR & TO THE POINT)
 // =======================================================
 
 const { Client, GatewayIntentBits } = require('discord.js');
@@ -9,7 +9,7 @@ const express = require('express');
 // ===== KEEP RAILWAY AWAKE =====
 const app = express();
 app.get('/', (req, res) => {
-  res.send('🤖 AI Voice Bot (Parhan Bobo Edition) is Running!');
+  res.send('🤖 AI Voice Bot (Ngegas Edition) is Running!');
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Keep-alive server ready on port ${PORT}`));
@@ -30,12 +30,11 @@ const audioPlayer = createAudioPlayer();
 // ===== WHEN BOT IS READY =====
 client.once('clientReady', (c) => {
     console.log(`✅ Logged in as ${c.user.tag}!`);
-    console.log(`📢 Bot ready. Jangan diganggu, ntar parhan bangun.`);
+    console.log(`📢 Bot ready. Jgn banyak tanya lu.`);
 });
 
 // ===== HANDLE MESSAGES =====
 client.on('messageCreate', async message => {
-  // Jangan merespons jika pesan dari bot sendiri atau bot lain
   if (message.author.bot || !message.guild) return;
 
   // ----------------------------------------
@@ -112,9 +111,11 @@ client.on('messageCreate', async message => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
+          // PROMPT SYSTEM: Kunci utama respons kasar dan to the point
           systemInstruction: {
-            parts: [{ text: "Kamu adalah asisten chat Discord yang bersikap sangat ketus, cuek, sinis, dan malas melayani user. Langsung jawab ke inti masalah tanpa basa-basi (maksimal 1-2 kalimat). Gunakan gaya bahasa kasual, ngegas, atau meremehkan secara sarkas (contoh: 'Gini aja gak tahu', 'Nih', 'Pikir sendiri'). Jangan pernah pakai kata halo atau ramah lainnya." }]
+            parts: [{ text: "Kamu adalah asisten chat Discord yang bersikap sangat kasar, galak, ketus, sinis, dan malas melayani user. Langsung jawab ke inti masalah dengan sangat padat (maksimal 1 kalimat). Jangan pakai basa-basi, kalimat pembuka, atau penutup. Gunakan bahasa kasual, ngegas, dan meremehkan (contoh: 'Gini aja gak tahu, lu bodoh ya?', 'Nih, mikir sendiri!', 'Males gw jawabin hal sepele'). Jangan pernah ramah." }]
           },
+          // SAFETY SETTINGS: Blokir sensor Google biar jawaban kasar tidak tertahan
           safetySettings: [
             { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -130,7 +131,6 @@ client.on('messageCreate', async message => {
         const replyText = data.candidates[0].content.parts[0].text.substring(0, 1950);
         await message.reply(replyText);
       } else {
-        // AI nolak jawab/kosong tapi ga bikin crash
         await message.reply('Gagal dapet jawaban. AI-nya males jawab paling.');
       }
 
@@ -141,13 +141,9 @@ client.on('messageCreate', async message => {
   }
 });
 
-// ===== GLOBAL ANTI-CRASH SYSTEM (PARHAN LAGI BOBO) =====
-// Mengirim pesan otomatis ke channel saat terjadi error fatal di latar belakang
-
-const kirimPesanSistem = async (errorLog) => {
+// ===== GLOBAL ANTI-CRASH SYSTEM =====
+const kirimPesanSistem = async () => {
   try {
-    // AMBIL ID CHANNEL otomatis dari tempat bot terakhir aktif atau via Env Variable
-    // Supaya aman, kita cari text channel pertama yang bisa diakses bot untuk ngasih tau
     const channel = client.channels.cache.filter(c => c.type === 0).first(); 
     if (channel) {
       await channel.send('💤 parhan lagi bobo');
@@ -159,15 +155,18 @@ const kirimPesanSistem = async (errorLog) => {
 
 process.on('unhandledRejection', error => {
   console.error('Unhandled promise rejection:', error);
-  kirimPesanSistem(error);
+  kirimPesanSistem();
 });
 
 process.on('uncaughtException', error => {
   console.error('Uncaught Exception:', error);
-  kirimPesanSistem(error);
+  kirimPesanSistem();
 });
 
 // ===== START THE BOT =====
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
-  console.error('❌ ERROR: No Discord
+  console.error('❌ ERROR: No Discord token found!');
+} else {
+  client.login(token);
+}
