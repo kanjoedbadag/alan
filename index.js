@@ -1,5 +1,5 @@
 // =======================================================
-// DISCORD VOICE BOT + JAWABAN GEMINI AI (KASAR & TO THE POINT)
+// DISCORD VOICE BOT + JAWABAN GEMINI AI (DEBUG MODE)
 // =======================================================
 
 const { Client, GatewayIntentBits } = require('discord.js');
@@ -9,7 +9,7 @@ const express = require('express');
 // ===== KEEP RAILWAY AWAKE =====
 const app = express();
 app.get('/', (req, res) => {
-  res.send('🤖 AI Voice Bot (Ngegas Edition) is Running!');
+  res.send('🤖 AI Voice Bot (Debug Edition) is Running!');
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Keep-alive server ready on port ${PORT}`));
@@ -30,7 +30,7 @@ const audioPlayer = createAudioPlayer();
 // ===== WHEN BOT IS READY =====
 client.once('clientReady', (c) => {
     console.log(`✅ Logged in as ${c.user.tag}!`);
-    console.log(`📢 Bot ready. Jgn banyak tanya lu.`);
+    console.log(`📢 Bot ready. Mode debug aktif.`);
 });
 
 // ===== HANDLE MESSAGES =====
@@ -66,7 +66,7 @@ client.on('messageCreate', async message => {
       return;
     } catch (error) {
       console.error('Join error:', error);
-      return message.reply('❌ Gagal masuk. Hosting lu error atau gimana nih.');
+      return message.reply(`❌ Gagal masuk. Debug: \`${error.message}\``);
     }
   }
 
@@ -111,11 +111,9 @@ client.on('messageCreate', async message => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          // PROMPT SYSTEM: Kunci utama respons kasar dan to the point
           systemInstruction: {
             parts: [{ text: "Kamu adalah asisten chat Discord yang bersikap sangat kasar, galak, ketus, sinis, dan malas melayani user. Langsung jawab ke inti masalah dengan sangat padat (maksimal 1 kalimat). Jangan pakai basa-basi, kalimat pembuka, atau penutup. Gunakan bahasa kasual, ngegas, dan meremehkan (contoh: 'Gini aja gak tahu, lu bodoh ya?', 'Nih, mikir sendiri!', 'Males gw jawabin hal sepele'). Jangan pernah ramah." }]
           },
-          // SAFETY SETTINGS: Blokir sensor Google biar jawaban kasar tidak tertahan
           safetySettings: [
             { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
             { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -131,22 +129,25 @@ client.on('messageCreate', async message => {
         const replyText = data.candidates[0].content.parts[0].text.substring(0, 1950);
         await message.reply(replyText);
       } else {
-        await message.reply('Gagal dapet jawaban. AI-nya males jawab paling.');
+        // DEBUG: Jika API merespons tapi isinya bukan teks (misal error API Key / kuota habis)
+        const rawError = JSON.stringify(data).substring(0, 1800);
+        await message.reply(`parhan lagi bobo\n\`\`\`json\n${rawError}\n\`\`\``);
       }
 
     } catch (error) {
       console.error('Gemini AI Error:', error);
-      await message.reply('parhan lagi bobo');
+      // DEBUG: Jika terjadi crash jaringan atau request gagal total
+      await message.reply(`parhan lagi bobo\n\`\`\`cmd\n${error.stack ? error.stack.substring(0, 1800) : error.message}\n\`\`\``);
     }
   }
 });
 
 // ===== GLOBAL ANTI-CRASH SYSTEM =====
-const kirimPesanSistem = async () => {
+const kirimPesanSistem = async (err) => {
   try {
     const channel = client.channels.cache.filter(c => c.type === 0).first(); 
     if (channel) {
-      await channel.send('💤 parhan lagi bobo');
+      await channel.send(`💤 parhan lagi bobo\n\`\`\`cmd\n${err ? err.message : 'Unknown Global Error'}\n\`\`\``);
     }
   } catch (e) {
     console.error('Gagal ngirim pesan anti-crash:', e);
@@ -155,12 +156,12 @@ const kirimPesanSistem = async () => {
 
 process.on('unhandledRejection', error => {
   console.error('Unhandled promise rejection:', error);
-  kirimPesanSistem();
+  kirimPesanSistem(error);
 });
 
 process.on('uncaughtException', error => {
   console.error('Uncaught Exception:', error);
-  kirimPesanSistem();
+  kirimPesanSistem(error);
 });
 
 // ===== START THE BOT =====
