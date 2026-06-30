@@ -39,7 +39,7 @@ client.on('messageCreate', async message => {
   if (message.author.bot || !message.guild) return;
 
   // !join - Join voice channel
-  if (message.content.toLowerCase() === '!oilan') {
+  if (message.content.toLowerCase() === '!in') {
     try {
       // Leave current VC if in one
       if (voiceConnection) {
@@ -70,7 +70,7 @@ client.on('messageCreate', async message => {
   }
 
   // !leave - Leave voice channel
-  if (message.content.toLowerCase() === '!mebur') {
+  if (message.content.toLowerCase() === '!out') {
     if (voiceConnection) {
       voiceConnection.destroy();
       voiceConnection = null;
