@@ -1,5 +1,5 @@
 // =======================================================
-// DISCORD VOICE BOT + JAWABAN GEMINI AI (DEBUG MODE)
+// DISCORD VOICE BOT + JAWABAN GEMINI AI
 // =======================================================
 
 const { Client, GatewayIntentBits } = require('discord.js');
@@ -9,7 +9,7 @@ const express = require('express');
 // ===== KEEP RAILWAY AWAKE =====
 const app = express();
 app.get('/', (req, res) => {
-  res.send('🤖 AI Voice Bot (Debug Edition) is Running!');
+  res.send('🤖 AI Voice Bot is Running!');
 });
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`✅ Keep-alive server ready on port ${PORT}`));
@@ -28,9 +28,9 @@ let voiceConnection = null;
 const audioPlayer = createAudioPlayer();
 
 // ===== WHEN BOT IS READY =====
-client.once('clientReady', (c) => {
+client.once('ready', (c) => { // Mengubah 'clientReady' ke 'ready' agar sesuai standar v14 jika diperlukan
     console.log(`✅ Logged in as ${c.user.tag}!`);
-    console.log(`📢 Bot ready. Mode debug aktif.`);
+    console.log(`📢 Bot ready.`);
 });
 
 // ===== HANDLE MESSAGES =====
@@ -66,7 +66,7 @@ client.on('messageCreate', async message => {
       return;
     } catch (error) {
       console.error('Join error:', error);
-      return message.reply(`❌ Gagal masuk. Debug: \`${error.message}\``);
+      return message.reply(`❌ Gagal masuk. Error: \`${error.message}\``);
     }
   }
 
@@ -129,39 +129,15 @@ client.on('messageCreate', async message => {
         const replyText = data.candidates[0].content.parts[0].text.substring(0, 1950);
         await message.reply(replyText);
       } else {
-        // DEBUG: Jika API merespons tapi isinya bukan teks (misal error API Key / kuota habis)
         const rawError = JSON.stringify(data).substring(0, 1800);
-        await message.reply(`parhan lagi bobo\n\`\`\`json\n${rawError}\n\`\`\``);
+        await message.reply(`❌ Terjadi kesalahan pada API Gemini.\n\`\`\`json\n${rawError}\n\`\`\``);
       }
 
     } catch (error) {
       console.error('Gemini AI Error:', error);
-      // DEBUG: Jika terjadi crash jaringan atau request gagal total
-      await message.reply(`parhan lagi bobo\n\`\`\`cmd\n${error.stack ? error.stack.substring(0, 1800) : error.message}\n\`\`\``);
+      await message.reply(`❌ Request gagal.\n\`\`\`cmd\n${error.message}\n\`\`\``);
     }
   }
-});
-
-// ===== GLOBAL ANTI-CRASH SYSTEM =====
-const kirimPesanSistem = async (err) => {
-  try {
-    const channel = client.channels.cache.filter(c => c.type === 0).first(); 
-    if (channel) {
-      await channel.send(`💤 parhan lagi bobo\n\`\`\`cmd\n${err ? err.message : 'Unknown Global Error'}\n\`\`\``);
-    }
-  } catch (e) {
-    console.error('Gagal ngirim pesan anti-crash:', e);
-  }
-};
-
-process.on('unhandledRejection', error => {
-  console.error('Unhandled promise rejection:', error);
-  kirimPesanSistem(error);
-});
-
-process.on('uncaughtException', error => {
-  console.error('Uncaught Exception:', error);
-  kirimPesanSistem(error);
 });
 
 // ===== START THE BOT =====
