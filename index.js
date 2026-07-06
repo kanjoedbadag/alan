@@ -4,6 +4,18 @@ const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@googl
 const play = require('play-dl');
 require('dotenv').config();
 
+// CONFIG BYPASS COOKIE YOUTUBE AGAR TERLEPAS DARI BLOKIR 'NOT A BOT'
+if (process.env.YT_COOKIE) {
+    play.setToken({
+        youtube: {
+            cookie: process.env.YT_COOKIE
+        }
+    });
+    console.log("Cookie YouTube berhasil dipasang untuk bypass Captcha.");
+} else {
+    console.warn("Peringatan: YT_COOKIE belum dimasukkan di Variables Railway!");
+}
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -118,7 +130,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // 2. FITUR MUTAR MUSIK DARI YOUTUBE (SUDAH FIX AUDIO DECODER)
+    // 2. FITUR MUTAR MUSIK DARI YOUTUBE (SUDAH FIX AUDIO DECODER & BYPASS CAPTCHA)
     if (message.content.startsWith(`${PREFIX}play`)) {
         const args = message.content.slice(`${PREFIX}play`.length).trim();
         if (!args) return message.reply('Mau nyetel apa? Tulis judulnya, jangan kosongan bangsat!');
@@ -129,12 +141,10 @@ client.on('messageCreate', async (message) => {
             let yt_info = await play.search(args, { limit: 1 });
             if (!yt_info || yt_info.length === 0) return message.reply('Lagu gak ketemu, ketik yang bener tolol!');
 
-            // Ambil stream dari YouTube
+            // Ambil stream dari YouTube (menggunakan otentikasi cookie di latar belakang)
             let stream = await play.stream(yt_info[0].url);
             
-            // Bongkar format stream agar tipenya (Opus/Arbitrary) terbaca jelas oleh Discord Linux
             const { stream: probedStream, type } = await demuxProbe(stream.stream);
-            
             let resource = createAudioResource(probedStream, { inputType: type });
 
             if (!globalConnection) await connectToVoice();
