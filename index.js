@@ -1,78 +1,24 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState, demuxProbe } = require('@discordjs/voice');
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
-const play = require('play-dl');
 require('dotenv').config();
-
-// CONFIG PERBAIKAN 429: Paksa YouTube Agen mengabaikan pembatasan IP lokal jika cookie tersedia
-if (process.env.YT_COOKIE) {
-    play.setToken({
-        youtube: {
-            cookie: process.env.YT_COOKIE
-        }
-    });
-    console.log("Cookie YouTube berhasil dipasang.");
-}
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates
+        GatewayIntentBits.MessageContent
     ]
 });
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "KOSONG");
-const PREFIX = '!';
-const players = new Map();
-let globalConnection = null;
-
-async function connectToVoice() {
-    const channelId = process.env.VOICE_CHANNEL_ID;
-    if (!channelId) return;
-
-    try {
-        const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isVoiceBased()) return;
-
-        globalConnection = joinVoiceChannel({
-            channelId: channel.id,
-            guildId: channel.guild.id,
-            adapterCreator: channel.guild.voiceAdapterCreator,
-            selfDeaf: false
-        });
-
-        let player = players.get(channel.guild.id);
-        if (!player) {
-            player = createAudioPlayer({
-                behaviors: {
-                    noSubscriber: 'play'
-                }
-            });
-            players.set(channel.guild.id, player);
-        }
-        globalConnection.subscribe(player);
-
-        globalConnection.on(VoiceConnectionStatus.Disconnected, async () => {
-            try {
-                await Promise.race([
-                    entersState(globalConnection, VoiceConnectionStatus.Signalling, 5_000),
-                    entersState(globalConnection, VoiceConnectionStatus.Connecting, 5_000),
-                ]);
-            } catch (error) {
-                connectToVoice();
-            }
-        });
-        console.log(`Bot standby di VC: ${channel.name}`);
-    } catch (e) {
-        console.error("Gagal konek voice:", e);
-    }
+if (!process.env.GEMINI_API_KEY) {
+    console.error("WOI! GEMINI_API_KEY belum lu masukin di Variables Railway!");
 }
 
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "KOSONG");
+const PREFIX = '!';
+
 client.once('clientReady', () => {
-    console.log(`Bot siap! Login sebagai ${client.user.tag}.`);
-    connectToVoice();
+    console.log(`Bot AI Siap! Login sebagai ${client.user.tag}.`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -81,7 +27,7 @@ client.on('messageCreate', async (message) => {
     const isMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
     const isRepliedToBot = message.reference && (await message.channel.messages.fetch(message.reference.messageId)).author.id === client.user.id;
 
-    // 1. FITUR CHAT GEMINI
+    // FITUR CHAT GEMINI (GALAK & KASAR)
     if (message.content.startsWith(`${PREFIX}tanya`) || isMentioned || isRepliedToBot) {
         let prompt = message.content;
         if (prompt.startsWith(`${PREFIX}tanya`)) {
@@ -89,7 +35,9 @@ client.on('messageCreate', async (message) => {
         }
         prompt = prompt.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
 
-        if (!prompt) return message.reply('Mau nanya apaan, ketik yang bener dong bangsat!');
+        if (!prompt) {
+            return message.reply('Mau nanya apaan, ketik yang bener dong bangsat!');
+        }
 
         await message.channel.sendTyping();
 
@@ -112,47 +60,15 @@ client.on('messageCreate', async (message) => {
             });
             
             const responseText = result.response.text();
-            if (responseText) return message.reply(responseText);
+            if (responseText) {
+                return message.reply(responseText);
+            }
+            
             return message.reply('bacot ngentot gua lagi tidur');
+
         } catch (error) {
             console.error("ERROR GEMINI:", error);
             return message.reply(`Gagal konek AI! Info Eror: ${error.message}`);
-        }
-    }
-
-    // 2. FITUR MUSIK (DENGAN PENANGANAN ERROR REDIRECT DAN PERUBAHAN STREAM AGENT)
-    if (message.content.startsWith(`${PREFIX}play`)) {
-        const args = message.content.slice(`${PREFIX}play`.length).trim();
-        if (!args) return message.reply('Mau nyetel apa? Tulis judulnya, jangan kosongan bangsat!');
-
-        await message.channel.sendTyping();
-
-        try {
-            // Bersihkan data otentikasi lama yang menumpuk di memori internal play-dl
-            if(typeof play.authorization === 'function') await play.authorization();
-
-            let yt_info = await play.search(args, { limit: 1 });
-            if (!yt_info || yt_info.length === 0) return message.reply('Lagu gak ketemu, ketik yang bener tolol!');
-
-            // Ambil stream dan aktifkan kompatibilitas penuh melewati limitasi 429 IP data center
-            let stream = await play.stream(yt_info[0].url, {
-                quality: 1, // Turunkan sedikit ke medium kualitas untuk melewati restriksi bandwidth 429
-                discordPlayerCompatibility: true
-            });
-            
-            const { stream: probedStream, type } = await demuxProbe(stream.stream);
-            let resource = createAudioResource(probedStream, { inputType: type });
-
-            if (!globalConnection) await connectToVoice();
-
-            let player = players.get(message.guild.id);
-            if (player) {
-                player.play(resource);
-                message.reply(`Nih gw setelin **${yt_info[0].title}**. Diem lu, dengerin!`);
-            }
-        } catch (error) {
-            console.error("ERROR MUSIK:", error);
-            return message.reply(`Gagal putar lagu karena IP server kena block YouTube (Error 429). Coba kirim ulang link lagu spesifik atau ganti judul lain!`);
         }
     }
 });
