@@ -1,5 +1,5 @@
-const { Client, GatewayIntentBits, ChannelType } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus } = require('@discordjs/voice');
+const { Client, GatewayIntentBits } = require('discord.js');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } = require('@discordjs/voice');
 const { OpenAI } = require('openai');
 const play = require('play-dl');
 require('dotenv').config();
@@ -19,9 +19,62 @@ const openai = new OpenAI({
 
 const PREFIX = '!';
 const players = new Map();
+let globalConnection = null;
+
+// Fungsi untuk membuat bot selalu connect ke VC tujuan
+async function connectToVoice() {
+    const channelId = process.env.VOICE_CHANNEL_ID;
+    if (!channelId) {
+        console.error("ID Voice Channel belum lu pasang di env, goblok!");
+        return;
+    }
+
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isVoiceBased()) {
+            console.error("ID Channel kagak valid atau bukan voice channel!");
+            return;
+        }
+
+        globalConnection = joinVoiceChannel({
+            channelId: channel.id,
+            guildId: channel.guild.id,
+            adapterCreator: channel.guild.voiceAdapterCreator,
+            selfDeaf: false // Agar bot tidak deafen jika ingin mendengarkan fitur lain nanti
+        });
+
+        // Setup player kalau belum ada
+        let player = players.get(channel.guild.id);
+        if (!player) {
+            player = createAudioPlayer();
+            players.set(channel.guild.id, player);
+        }
+        globalConnection.subscribe(player);
+
+        // Anti-putus: Kalau dc otomatis sambungkan ulang
+        globalConnection.on(VoiceConnectionStatus.Disconnected, async () => {
+            try {
+                console.log("Koneksi putus, mencoba masuk lagi...");
+                await Promise.race([
+                    entersState(globalConnection, VoiceConnectionStatus.Signalling, 5_000),
+                    entersState(globalConnection, VoiceConnectionStatus.Connecting, 5_000),
+                ]);
+            } catch (error) {
+                // Kalau beneran dc, reconnect manual
+                connectToVoice();
+            }
+        });
+
+        console.log(`Bot berhasil masuk stasioner di VC: ${channel.name}`);
+    } catch (e) {
+        console.error("Gagal konek otomatis ke voice:", e);
+    }
+}
 
 client.once('ready', () => {
     console.log(`Bot lu udah siap nih! Login sebagai ${client.user.tag}. Jangan beban ya!`);
+    // Jalankan fungsi auto-join saat bot nyala
+    connectToVoice();
 });
 
 client.on('messageCreate', async (message) => {
@@ -32,11 +85,6 @@ client.on('messageCreate', async (message) => {
 
     // 1. FITUR MUSIK
     if (command === 'play') {
-        const voiceChannel = message.member.voice.channel;
-        if (!voiceChannel) {
-            return message.reply('Masuk voice channel dulu tolol! Gimana gw mau nyetel musik?');
-        }
-
         const query = args.join(' ');
         if (!query) {
             return message.reply('Mau nyetel apa? Tulis judulnya atau link-nya, jangan kosongan bangsat!');
@@ -53,47 +101,26 @@ client.on('messageCreate', async (message) => {
             let stream = await play.stream(yt_info[0].url);
             let resource = createAudioResource(stream.stream, { inputType: stream.type });
 
-            const connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: message.guild.id,
-                adapterCreator: message.guild.voiceAdapterCreator,
-            });
-
-            let player = players.get(message.guild.id);
-            if (!player) {
-                player = createAudioPlayer();
-                players.set(message.guild.id, player);
-                connection.subscribe(player);
+            // Pastikan koneksi aman, kalau belum ada kita paksa buat ulang
+            if (!globalConnection) {
+                await connectToVoice();
             }
 
-            player.play(resource);
-            message.reply(`Nih gw setelin **${yt_info[0].title}**. Diem lu, dengerin!`);
+            let player = players.get(message.guild.id);
+            if (player) {
+                player.play(resource);
+                message.reply(`Nih gw setelin **${yt_info[0].title}**. Diem lu, dengerin!`);
+            } else {
+                message.reply('Sabar nyet, player audio belum siap.');
+            }
 
         } catch (error) {
             console.error(error);
-            // Sesuai request kalau limit/error
             message.reply('bacot ngentot gua lagi tidur');
         }
     }
 
-    // 2. FITUR LEAVE
-    else if (command === 'stop' || command === 'leave') {
-        const connection = joinVoiceChannel({
-            channelId: message.member.voice.channel?.id,
-            guildId: message.guild.id,
-            adapterCreator: message.guild.voiceAdapterCreator,
-        });
-        
-        if (connection) {
-            connection.destroy();
-            players.delete(message.guild.id);
-            message.reply('Matiin kan? Puas lu? Gw cabut, males melayani lu.');
-        } else {
-            message.reply('Gw aja gak ada di VC, sok tahu lu suruh gw cabut!');
-        }
-    }
-
-    // 3. FITUR CHAT GPT DENGAN PERSONA GALAK
+    // 2. FITUR CHAT GPT DENGAN PERSONA GALAK
     else if (command === 'tanya') {
         const prompt = args.join(' ');
         if (!prompt) return message.reply('Mau nanya apa? Punya otak dipake, ketik pertanyaannya!');
@@ -118,7 +145,6 @@ client.on('messageCreate', async (message) => {
 
         } catch (error) {
             console.error(error);
-            // Sesuai request kalau limit/error
             message.reply('bacot ngentot gua lagi tidur');
         }
     }
