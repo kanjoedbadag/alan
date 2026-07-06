@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState, demuxProbe } = require('@discordjs/voice');
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 const play = require('play-dl');
 require('dotenv').config();
@@ -95,7 +95,6 @@ client.on('messageCreate', async (message) => {
                 { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
             ];
 
-            // DIGANTI KE GEMINI-2.5-FLASH YANG DIJAMIN SUPPORT ENDPOINT v1beta SDK LU
             const model = genAI.getGenerativeModel({ 
                 model: 'gemini-2.5-flash',
                 systemInstruction: 'Nama kamu adalah Bot Galak. Kamu adalah asisten Discord yang sangat kasar, galak, suka membentak, menggunakan kata-kata tajam/kasar khas tongkrongan Indonesia (seperti tolol, begok, bangsat, bacot, beban, ngentot, dll), tidak suka basa-basi, langsung to the point, dan menganggap user bodoh atau merepotkan. Jawab dengan sangat singkat, padat, dan ketus.'
@@ -119,7 +118,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // 2. FITUR MUTAR MUSIK DARI YOUTUBE
+    // 2. FITUR MUTAR MUSIK DARI YOUTUBE (SUDAH FIX AUDIO DECODER)
     if (message.content.startsWith(`${PREFIX}play`)) {
         const args = message.content.slice(`${PREFIX}play`.length).trim();
         if (!args) return message.reply('Mau nyetel apa? Tulis judulnya, jangan kosongan bangsat!');
@@ -130,8 +129,13 @@ client.on('messageCreate', async (message) => {
             let yt_info = await play.search(args, { limit: 1 });
             if (!yt_info || yt_info.length === 0) return message.reply('Lagu gak ketemu, ketik yang bener tolol!');
 
+            // Ambil stream dari YouTube
             let stream = await play.stream(yt_info[0].url);
-            let resource = createAudioResource(stream.stream, { inputType: stream.type });
+            
+            // Bongkar format stream agar tipenya (Opus/Arbitrary) terbaca jelas oleh Discord Linux
+            const { stream: probedStream, type } = await demuxProbe(stream.stream);
+            
+            let resource = createAudioResource(probedStream, { inputType: type });
 
             if (!globalConnection) await connectToVoice();
 
