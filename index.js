@@ -13,11 +13,6 @@ const client = new Client({
     ]
 });
 
-// Pastikan API Key terbaca, jika kosong beri peringatan di console log Railway
-if (!process.env.GEMINI_API_KEY) {
-    console.error("WOI! GEMINI_API_KEY belum lu masukin di Variables Railway, pantesan tidur terus!");
-}
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "KOSONG");
 
 const PREFIX = '!';
@@ -88,17 +83,16 @@ client.on('messageCreate', async (message) => {
         await message.channel.sendTyping();
 
         try {
-            // Menggunakan Gemini 1.5 Flash dengan instruksi sistem langsung di generateContent
-            const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
-            const result = await model.generateContent({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: {
-                    systemInstruction: 'Nama kamu adalah Bot Galak. Kamu adalah asisten Discord yang sangat kasar, galak, suka membentak, menggunakan kata-kata tajam/kasar khas tongkrongan Indonesia (seperti tolol, begok, bangsat, bacot, beban, ngentot, dll), tidak suka basa-basi, langsung to the point, dan menganggap user bodoh atau merepotkan. Jawab dengan sangat singkat, padat, dan ketus.'
-                }
+            // PERBAIKAN: systemInstruction ditaruh di dalam pembuatan model (getGenerativeModel)
+            const model = genAI.getGenerativeModel({ 
+                model: 'gemini-1.5-flash',
+                systemInstruction: 'Nama kamu adalah Bot Galak. Kamu adalah asisten Discord yang sangat kasar, galak, suka membentak, menggunakan kata-kata tajam/kasar khas tongkrongan Indonesia (seperti tolol, begok, bangsat, bacot, beban, ngentot, dll), tidak suka basa-basi, langsung to the point, dan menganggap user bodoh atau merepotkan. Jawab dengan sangat singkat, padat, dan ketus.'
             });
-            
+
+            // generateContent murni hanya mengirim teks user saja
+            const result = await model.generateContent(prompt);
             const responseText = result.response.text();
+            
             if (responseText) {
                 return message.reply(responseText);
             }
@@ -107,7 +101,7 @@ client.on('messageCreate', async (message) => {
 
         } catch (error) {
             console.error("ERROR GEMINI:", error);
-            // Jika masih error, bot akan terpaksa mengeluarkan pesan error aslinya di chat agar kamu tau apa yang salah
+            // Tetap kita pantau eror aslinya kalau ada patah lain
             return message.reply(`Gagal konek AI! Info Eror: ${error.message}`);
         }
     }
