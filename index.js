@@ -1,5 +1,5 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState, demuxProbe } = require('@discordjs/voice');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState, demuxProbe, getVoiceConnection } = require('@discordjs/voice');
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 const play = require('play-dl');
 require('dotenv').config();
@@ -13,7 +13,7 @@ const client = new Client({
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates // Penting untuk deteksi voice channel!
+        GatewayIntentBits.GuildVoiceStates 
     ]
 });
 
@@ -60,12 +60,47 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // 2. FITUR MUSIK (OTOMATIS JOIN VOICE TEMPAT USER BERADA)
+    // ==========================================
+    // 2. COMAND BARU: !join (SURUH BOT MASUK VC)
+    // ==========================================
+    if (message.content.startsWith(`${PREFIX}join`)) {
+        const voiceChannel = message.member.voice.channel;
+        if (!voiceChannel) {
+            return message.reply('Lu masuk kamar voice dulu tolol, baru panggil gua!');
+        }
+
+        try {
+            joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: message.guild.id,
+                adapterCreator: message.guild.voiceAdapterCreator,
+                selfDeaf: false
+            });
+            return message.reply(`Gua udah masuk ke kamar **${voiceChannel.name}**, nih. Puas lu?!`);
+        } catch (error) {
+            console.error(error);
+            return message.reply('Gagal masuk voice, cek permissions role gua di server!');
+        }
+    }
+
+    // ==========================================
+    // 3. COMAND BARU: !leave / !dc (USIR BOT DARI VC)
+    // ==========================================
+    if (message.content.startsWith(`${PREFIX}leave`) || message.content.startsWith(`${PREFIX}dc`)) {
+        const connection = getVoiceConnection(message.guild.id);
+        if (!connection) {
+            return message.reply('Gua aja lagi gak di kamar voice mana-mana, pea!');
+        }
+
+        connection.destroy();
+        return message.reply('Gua cabut! Males juga gua nongkrong ama lu pada.');
+    }
+
+    // 4. FITUR MUSIK (!play)
     if (message.content.startsWith(`${PREFIX}play`)) {
         const args = message.content.slice(`${PREFIX}play`.length).trim();
         if (!args) return message.reply('Mau nyetel apa? Tulis judulnya, jangan kosongan bangsat!');
 
-        // Cek apakah user yang mengetik perintah ada di dalam voice channel
         const voiceChannel = message.member.voice.channel;
         if (!voiceChannel) {
             return message.reply('Lu masuk kamar voice dulu tolol, gimana mau dengerin lagu!');
@@ -77,12 +112,10 @@ client.on('messageCreate', async (message) => {
             let yt_info = await play.search(args, { limit: 1 });
             if (!yt_info || yt_info.length === 0) return message.reply('Lagu gak ketemu, ketik yang bener tolol!');
 
-            // Ambil stream YouTube
             let stream = await play.stream(yt_info[0].url, { discordPlayerCompatibility: true });
             const { stream: probedStream, type } = await demuxProbe(stream.stream);
             let resource = createAudioResource(probedStream, { inputType: type });
 
-            // Konek ke kamar voice tempat user berada secara dinamis
             const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
                 guildId: message.guild.id,
@@ -99,7 +132,7 @@ client.on('messageCreate', async (message) => {
             connection.subscribe(player);
             player.play(resource);
 
-            message.reply(`Nih gw otw masuk ke kamar **${voiceChannel.name}** buat nyetelin **${yt_info[0].title}**. Diem lu!`);
+            message.reply(`Nih gw setelin **${yt_info[0].title}** di kamar **${voiceChannel.name}**. Diem lu!`);
 
         } catch (error) {
             console.error("ERROR MUSIK:", error);
