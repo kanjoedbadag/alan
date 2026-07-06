@@ -13,7 +13,6 @@ const client = new Client({
     ]
 });
 
-// Memastikan API Key terbaca di server Railway
 if (!process.env.GEMINI_API_KEY) {
     console.error("WOI! GEMINI_API_KEY belum lu masukin di Variables Railway, pantesan tidur terus!");
 }
@@ -24,7 +23,6 @@ const PREFIX = '!';
 const players = new Map();
 let globalConnection = null;
 
-// Fungsi otomatis masuk ke Voice Channel stasioner (diam menetap)
 async function connectToVoice() {
     const channelId = process.env.VOICE_CHANNEL_ID;
     if (!channelId) return;
@@ -47,7 +45,6 @@ async function connectToVoice() {
         }
         globalConnection.subscribe(player);
 
-        // Anti-putus: Kalau koneksi putus/dikick, otomatis masuk kamar voice lagi
         globalConnection.on(VoiceConnectionStatus.Disconnected, async () => {
             try {
                 await Promise.race([
@@ -73,7 +70,6 @@ client.once('ready', () => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
-    // Deteksi interaksi langsung (mention atau reply pesan si bot)
     const isMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
     const isRepliedToBot = message.reference && (await message.channel.messages.fetch(message.reference.messageId)).author.id === client.user.id;
 
@@ -92,7 +88,6 @@ client.on('messageCreate', async (message) => {
         await message.channel.sendTyping();
 
         try {
-            // Bypass filter kata kasar Google Gemini biar bebas toxic
             const safetySettings = [
                 { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
                 { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -100,9 +95,9 @@ client.on('messageCreate', async (message) => {
                 { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
             ];
 
-            // Inisialisasi model menggunakan versi produksi terbaru agar tidak eror 404
+            // DIGANTI KE GEMINI-2.5-FLASH YANG DIJAMIN SUPPORT ENDPOINT v1beta SDK LU
             const model = genAI.getGenerativeModel({ 
-                model: 'gemini-1.5-flash-latest',
+                model: 'gemini-2.5-flash',
                 systemInstruction: 'Nama kamu adalah Bot Galak. Kamu adalah asisten Discord yang sangat kasar, galak, suka membentak, menggunakan kata-kata tajam/kasar khas tongkrongan Indonesia (seperti tolol, begok, bangsat, bacot, beban, ngentot, dll), tidak suka basa-basi, langsung to the point, dan menganggap user bodoh atau merepotkan. Jawab dengan sangat singkat, padat, dan ketus.'
             });
 
@@ -120,7 +115,6 @@ client.on('messageCreate', async (message) => {
 
         } catch (error) {
             console.error("ERROR GEMINI:", error);
-            // Menampilkan error asli di chat Discord jika sewaktu-waktu ada kendala teknis
             return message.reply(`Gagal konek AI! Info Eror: ${error.message}`);
         }
     }
