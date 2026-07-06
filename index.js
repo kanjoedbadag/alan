@@ -1,24 +1,28 @@
 const { Client, GatewayIntentBits } = require('discord.js');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState, demuxProbe } = require('@discordjs/voice');
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
+const play = require('play-dl');
 require('dotenv').config();
+
+if (process.env.YT_COOKIE) {
+    play.setToken({ youtube: { cookie: process.env.YT_COOKIE } });
+}
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates // Penting untuk deteksi voice channel!
     ]
 });
 
-if (!process.env.GEMINI_API_KEY) {
-    console.error("WOI! GEMINI_API_KEY belum lu masukin di Variables Railway!");
-}
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "KOSONG");
 const PREFIX = '!';
+const players = new Map();
 
 client.once('clientReady', () => {
-    console.log(`Bot AI Siap! Login sebagai ${client.user.tag}.`);
+    console.log(`Bot siap! Login sebagai ${client.user.tag}.`);
 });
 
 client.on('messageCreate', async (message) => {
@@ -27,18 +31,13 @@ client.on('messageCreate', async (message) => {
     const isMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
     const isRepliedToBot = message.reference && (await message.channel.messages.fetch(message.reference.messageId)).author.id === client.user.id;
 
-    // FITUR CHAT GEMINI (GALAK & KASAR)
+    // 1. FITUR CHAT AI GEMINI
     if (message.content.startsWith(`${PREFIX}tanya`) || isMentioned || isRepliedToBot) {
         let prompt = message.content;
-        if (prompt.startsWith(`${PREFIX}tanya`)) {
-            prompt = prompt.slice(`${PREFIX}tanya`.length).trim();
-        }
+        if (prompt.startsWith(`${PREFIX}tanya`)) prompt = prompt.slice(`${PREFIX}tanya`.length).trim();
         prompt = prompt.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
 
-        if (!prompt) {
-            return message.reply('Mau nanya apaan, ketik yang bener dong bangsat!');
-        }
-
+        if (!prompt) return message.reply('Mau nanya apaan, ketik yang bener dong bangsat!');
         await message.channel.sendTyping();
 
         try {
@@ -51,24 +50,60 @@ client.on('messageCreate', async (message) => {
 
             const model = genAI.getGenerativeModel({ 
                 model: 'gemini-2.5-flash',
-                systemInstruction: 'Nama kamu adalah Bot Galak. Kamu adalah asisten Discord yang sangat kasar, galak, suka membentak, menggunakan kata-kata tajam/kasar khas tongkrongan Indonesia (seperti tolol, begok, bangsat, bacot, beban, ngentot, dll), tidak suka basa-basi, langsung to the point, dan menganggap user bodoh atau merepotkan. Jawab dengan sangat singkat, padat, dan ketus.'
+                systemInstruction: 'Nama kamu adalah Bot Galak. Jawab dengan sangat kasar, galak, ketus, menggunakan kata-kata tajam khas tongkrongan Indonesia.'
             });
 
-            const result = await model.generateContent({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                safetySettings: safetySettings
+            const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], safetySettings: safetySettings });
+            return message.reply(result.response.text() || 'bacot ngentot gua lagi tidur');
+        } catch (error) {
+            return message.reply(`Gagal konek AI! Info Eror: ${error.message}`);
+        }
+    }
+
+    // 2. FITUR MUSIK (OTOMATIS JOIN VOICE TEMPAT USER BERADA)
+    if (message.content.startsWith(`${PREFIX}play`)) {
+        const args = message.content.slice(`${PREFIX}play`.length).trim();
+        if (!args) return message.reply('Mau nyetel apa? Tulis judulnya, jangan kosongan bangsat!');
+
+        // Cek apakah user yang mengetik perintah ada di dalam voice channel
+        const voiceChannel = message.member.voice.channel;
+        if (!voiceChannel) {
+            return message.reply('Lu masuk kamar voice dulu tolol, gimana mau dengerin lagu!');
+        }
+
+        await message.channel.sendTyping();
+
+        try {
+            let yt_info = await play.search(args, { limit: 1 });
+            if (!yt_info || yt_info.length === 0) return message.reply('Lagu gak ketemu, ketik yang bener tolol!');
+
+            // Ambil stream YouTube
+            let stream = await play.stream(yt_info[0].url, { discordPlayerCompatibility: true });
+            const { stream: probedStream, type } = await demuxProbe(stream.stream);
+            let resource = createAudioResource(probedStream, { inputType: type });
+
+            // Konek ke kamar voice tempat user berada secara dinamis
+            const connection = joinVoiceChannel({
+                channelId: voiceChannel.id,
+                guildId: message.guild.id,
+                adapterCreator: message.guild.voiceAdapterCreator,
+                selfDeaf: false
             });
-            
-            const responseText = result.response.text();
-            if (responseText) {
-                return message.reply(responseText);
+
+            let player = players.get(message.guild.id);
+            if (!player) {
+                player = createAudioPlayer();
+                players.set(message.guild.id, player);
             }
-            
-            return message.reply('bacot ngentot gua lagi tidur');
+
+            connection.subscribe(player);
+            player.play(resource);
+
+            message.reply(`Nih gw otw masuk ke kamar **${voiceChannel.name}** buat nyetelin **${yt_info[0].title}**. Diem lu!`);
 
         } catch (error) {
-            console.error("ERROR GEMINI:", error);
-            return message.reply(`Gagal konek AI! Info Eror: ${error.message}`);
+            console.error("ERROR MUSIK:", error);
+            return message.reply(`Gagal putar lagu! Masalah IP Server Terblokir (429) atau bot lu ga dikasih izin connect.`);
         }
     }
 });
