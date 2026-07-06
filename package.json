@@ -11,6 +11,7 @@
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
     "sodium-native": "^4.0.4",
-    "play-dl": "^1.9.7"
+    "play-dl": "^1.9.7",
+    "opusscript": "^0.0.8" 
   }
 }
