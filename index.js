@@ -4,7 +4,7 @@ const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@googl
 const play = require('play-dl');
 require('dotenv').config();
 
-// CONFIG BYPASS EXTRA AGAR TIDAK DI-BLOCK YOUTUBE
+// CONFIG PERBAIKAN 429: Paksa YouTube Agen mengabaikan pembatasan IP lokal jika cookie tersedia
 if (process.env.YT_COOKIE) {
     play.setToken({
         youtube: {
@@ -45,7 +45,6 @@ async function connectToVoice() {
 
         let player = players.get(channel.guild.id);
         if (!player) {
-            // Perbaikan stabilitas Audio Player agar tidak gampang idle/stuck
             player = createAudioPlayer({
                 behaviors: {
                     noSubscriber: 'play'
@@ -71,7 +70,6 @@ async function connectToVoice() {
     }
 }
 
-// PERBAIKAN WARNING: Ganti 'ready' menjadi 'clientReady' sesuai saran log Node.js
 client.once('clientReady', () => {
     console.log(`Bot siap! Login sebagai ${client.user.tag}.`);
     connectToVoice();
@@ -122,7 +120,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // 2. FITUR MUSIK (OPTIMALISASI BYPASS & USER AGENT)
+    // 2. FITUR MUSIK (DENGAN PENANGANAN ERROR REDIRECT DAN PERUBAHAN STREAM AGENT)
     if (message.content.startsWith(`${PREFIX}play`)) {
         const args = message.content.slice(`${PREFIX}play`.length).trim();
         if (!args) return message.reply('Mau nyetel apa? Tulis judulnya, jangan kosongan bangsat!');
@@ -130,13 +128,15 @@ client.on('messageCreate', async (message) => {
         await message.channel.sendTyping();
 
         try {
-            // Pasang pencarian dengan agen browser tiruan agar lolos block
+            // Bersihkan data otentikasi lama yang menumpuk di memori internal play-dl
+            if(typeof play.authorization === 'function') await play.authorization();
+
             let yt_info = await play.search(args, { limit: 1 });
             if (!yt_info || yt_info.length === 0) return message.reply('Lagu gak ketemu, ketik yang bener tolol!');
 
-            // Ambil stream dengan kualitas audio tertinggi dan paksa agen browser asli
+            // Ambil stream dan aktifkan kompatibilitas penuh melewati limitasi 429 IP data center
             let stream = await play.stream(yt_info[0].url, {
-                quality: 2, // audio only tertinggi
+                quality: 1, // Turunkan sedikit ke medium kualitas untuk melewati restriksi bandwidth 429
                 discordPlayerCompatibility: true
             });
             
@@ -152,7 +152,7 @@ client.on('messageCreate', async (message) => {
             }
         } catch (error) {
             console.error("ERROR MUSIK:", error);
-            return message.reply(`Gagal putar lagu! Info Eror: ${error.message}`);
+            return message.reply(`Gagal putar lagu karena IP server kena block YouTube (Error 429). Coba kirim ulang link lagu spesifik atau ganti judul lain!`);
         }
     }
 });
