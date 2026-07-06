@@ -1,9 +1,10 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus } = require('@discordjs/voice');
-const { OpenAI } = require('openai');
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
+const { GoogleGenAI } = require('@google/generative-ai');
 const play = require('play-dl');
 require('dotenv').config();
 
+// Inisialisasi Discord Client
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -13,15 +14,14 @@ const client = new Client({
     ]
 });
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+// Inisialisasi Google Gemini API
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 const PREFIX = '!';
 const players = new Map();
 let globalConnection = null;
 
-// Fungsi auto-join ke Voice Channel
+// Fungsi otomatis masuk dan diam di Voice Channel (Stasioner)
 async function connectToVoice() {
     const channelId = process.env.VOICE_CHANNEL_ID;
     if (!channelId) {
@@ -50,6 +50,7 @@ async function connectToVoice() {
         }
         globalConnection.subscribe(player);
 
+        // Anti-putus: Kalau ditendang atau DC, langsung masuk lagi otomatis
         globalConnection.on(VoiceConnectionStatus.Disconnected, async () => {
             try {
                 await Promise.race([
@@ -57,6 +58,7 @@ async function connectToVoice() {
                     entersState(globalConnection, VoiceConnectionStatus.Connecting, 5_000),
                 ]);
             } catch (error) {
+                console.log("Koneksi terputus, mencoba masuk kamar voice lagi...");
                 connectToVoice();
             }
         });
@@ -73,21 +75,18 @@ client.once('ready', () => {
 });
 
 client.on('messageCreate', async (message) => {
-    // Abaikan pesan dari bot lain agar tidak terjadi looping chat antar-bot
     if (message.author.bot) return;
 
-    // Cek apakah bot di-mention atau di-reply
+    // Deteksi jika bot di-mention atau di-reply pesannya
     const isMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
     const isRepliedToBot = message.reference && (await message.channel.messages.fetch(message.reference.messageId)).author.id === client.user.id;
 
-    // 1. LOGIKA FITUR CHAT GPT (Ketik !tanya, atau Di-Mention, atau Di-Reply)
+    // 1. FITUR PINTAR GEMINI DENGAN PERSONA GALAK (Ketik !tanya, Mention, atau Reply)
     if (message.content.startsWith(`${PREFIX}tanya`) || isMentioned || isRepliedToBot) {
-        // Ambil isi teks pertanyaan (bersihkan prefix atau mention)
         let prompt = message.content;
         if (prompt.startsWith(`${PREFIX}tanya`)) {
             prompt = prompt.slice(`${PREFIX}tanya`.length).trim();
         }
-        // Bersihkan syntax mention <@ID_BOT> dari teks jika ada
         prompt = prompt.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
 
         if (!prompt && (isMentioned || isRepliedToBot)) {
@@ -99,28 +98,25 @@ client.on('messageCreate', async (message) => {
         await message.channel.sendTyping();
 
         try {
-            const response = await openai.chat.completions.create({
-                model: 'gpt-4o-mini',
-                messages: [
-                    { 
-                        role: 'system', 
-                        content: 'Nama kamu adalah Bot Galak. Kamu adalah asisten Discord yang sangat kasar, galak, suka membentak, menggunakan kata-kata tajam/kasar khas tongkrongan Indonesia, tidak suka basa-basi, langsung to the point, dan menganggap user bodoh atau merepotkan. Jawab dengan sangat singkat, padat, dan ketus.' 
-                    },
-                    { role: 'user', content: prompt }
-                ],
-                max_tokens: 150
+            // Menggunakan Gemini 1.5 Flash yang sangat cepat merespons
+            const model = ai.getGenerativeModel({ 
+                model: 'gemini-1.5-flash',
+                systemInstruction: 'Nama kamu adalah Bot Galak. Kamu adalah asisten Discord yang sangat kasar, galak, suka membentak, menggunakan kata-kata tajam/kasar khas tongkrongan Indonesia (seperti tolol, begok, bangsat, bacot, beban, dll), tidak suka basa-basi, langsung to the point, dan menganggap user bodoh atau merepotkan. Jawab dengan sangat singkat, padat, dan ketus.'
             });
 
-            const replyText = response.choices[0].message.content;
-            return message.reply(replyText);
+            const result = await model.generateContent(prompt);
+            const responseText = result.response.text();
+            
+            return message.reply(responseText || 'Bacot, gw males jawab.');
 
         } catch (error) {
             console.error(error);
+            // Sesuai request: Jika limit/error, keluarkan kata azimat ini
             return message.reply('bacot ngentot gua lagi tidur');
         }
     }
 
-    // 2. LOGIKA FITUR MUSIK (!play)
+    // 2. FITUR MUSIK (!play judul/link)
     if (message.content.startsWith(`${PREFIX}play`)) {
         const args = message.content.slice(`${PREFIX}play`.length).trim();
         if (!args) {
@@ -152,7 +148,7 @@ client.on('messageCreate', async (message) => {
 
         } catch (error) {
             console.error(error);
-            message.reply('bacot ngentot gua lagi tidur');
+            return message.reply('bacot ngentot gua lagi tidur');
         }
     }
 });
