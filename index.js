@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
-const { GoogleGenerativeAI } = require('@google/generative-ai'); // Perbaikan nama class di sini
+const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai'); // Ditambahkan modul harm/safety
 const play = require('play-dl');
 require('dotenv').config();
 
@@ -13,27 +13,22 @@ const client = new Client({
     ]
 });
 
-// Inisialisasi menggunakan GoogleGenerativeAI yang benar
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const PREFIX = '!';
 const players = new Map();
 let globalConnection = null;
 
-// Fungsi otomatis masuk ke Voice Channel
 async function connectToVoice() {
     const channelId = process.env.VOICE_CHANNEL_ID;
     if (!channelId) {
-        console.error("ID Voice Channel belum lu pasang di env, goblok!");
+        console.error("ID Voice Channel belum lu pasang di env!");
         return;
     }
 
     try {
         const channel = await client.channels.fetch(channelId);
-        if (!channel || !channel.isVoiceBased()) {
-            console.error("ID Channel kagak valid atau bukan voice channel!");
-            return;
-        }
+        if (!channel || !channel.isVoiceBased()) return;
 
         globalConnection = joinVoiceChannel({
             channelId: channel.id,
@@ -56,7 +51,6 @@ async function connectToVoice() {
                     entersState(globalConnection, VoiceConnectionStatus.Connecting, 5_000),
                 ]);
             } catch (error) {
-                console.log("Koneksi terputus, mencoba masuk kamar voice lagi...");
                 connectToVoice();
             }
         });
@@ -68,7 +62,7 @@ async function connectToVoice() {
 }
 
 client.once('ready', () => {
-    console.log(`Bot lu udah siap nih! Login sebagai ${client.user.tag}. Jangan beban ya!`);
+    console.log(`Bot lu udah siap nih! Login sebagai ${client.user.tag}.`);
     connectToVoice();
 });
 
@@ -78,7 +72,7 @@ client.on('messageCreate', async (message) => {
     const isMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
     const isRepliedToBot = message.reference && (await message.channel.messages.fetch(message.reference.messageId)).author.id === client.user.id;
 
-    // 1. FITUR PINTAR GEMINI DENGAN PERSONA GALAK
+    // 1. FITUR CHAT GEMINI (BYPASS SENSOR)
     if (message.content.startsWith(`${PREFIX}tanya`) || isMentioned || isRepliedToBot) {
         let prompt = message.content;
         if (prompt.startsWith(`${PREFIX}tanya`)) {
@@ -95,15 +89,25 @@ client.on('messageCreate', async (message) => {
         await message.channel.sendTyping();
 
         try {
-            // Menggunakan Gemini 1.5 Flash
+            // Konfigurasi untuk mematikan semua sensor filter kata kasar bawaan Google
+            const safetySettings = [
+                { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+                { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+            ];
+
             const model = genAI.getGenerativeModel({ 
                 model: 'gemini-1.5-flash',
-                systemInstruction: 'Nama kamu adalah Bot Galak. Kamu adalah asisten Discord yang sangat kasar, galak, suka membentak, menggunakan kata-kata tajam/kasar khas tongkrongan Indonesia (seperti tolol, begok, bangsat, bacot, beban, dll), tidak suka basa-basi, langsung to the point, dan menganggap user bodoh atau merepotkan. Jawab dengan sangat singkat, padat, dan ketus.'
+                systemInstruction: 'Nama kamu adalah Bot Galak. Kamu adalah asisten Discord yang sangat kasar, galak, suka membentak, menggunakan kata-kata tajam/kasar khas tongkrongan Indonesia (seperti tolol, begok, bangsat, bacot, beban, ngentot, dll), tidak suka basa-basi, langsung to the point, dan menganggap user bodoh atau merepotkan. Jawab dengan sangat singkat, padat, dan ketus.'
             });
 
-            const result = await model.generateContent(prompt);
-            const responseText = result.response.text();
+            const result = await model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                safetySettings: safetySettings // Filter dimatikan di sini
+            });
             
+            const responseText = result.response.text();
             return message.reply(responseText || 'Bacot, gw males jawab.');
 
         } catch (error) {
@@ -112,7 +116,7 @@ client.on('messageCreate', async (message) => {
         }
     }
 
-    // 2. FITUR MUSIK (!play judul/link)
+    // 2. FITUR MUSIK
     if (message.content.startsWith(`${PREFIX}play`)) {
         const args = message.content.slice(`${PREFIX}play`.length).trim();
         if (!args) {
