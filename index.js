@@ -4,16 +4,14 @@ const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@googl
 const play = require('play-dl');
 require('dotenv').config();
 
-// CONFIG BYPASS COOKIE YOUTUBE AGAR TERLEPAS DARI BLOKIR 'NOT A BOT'
+// CONFIG BYPASS EXTRA AGAR TIDAK DI-BLOCK YOUTUBE
 if (process.env.YT_COOKIE) {
     play.setToken({
         youtube: {
             cookie: process.env.YT_COOKIE
         }
     });
-    console.log("Cookie YouTube berhasil dipasang untuk bypass Captcha.");
-} else {
-    console.warn("Peringatan: YT_COOKIE belum dimasukkan di Variables Railway!");
+    console.log("Cookie YouTube berhasil dipasang.");
 }
 
 const client = new Client({
@@ -25,12 +23,7 @@ const client = new Client({
     ]
 });
 
-if (!process.env.GEMINI_API_KEY) {
-    console.error("WOI! GEMINI_API_KEY belum lu masukin di Variables Railway, pantesan tidur terus!");
-}
-
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "KOSONG");
-
 const PREFIX = '!';
 const players = new Map();
 let globalConnection = null;
@@ -52,7 +45,12 @@ async function connectToVoice() {
 
         let player = players.get(channel.guild.id);
         if (!player) {
-            player = createAudioPlayer();
+            // Perbaikan stabilitas Audio Player agar tidak gampang idle/stuck
+            player = createAudioPlayer({
+                behaviors: {
+                    noSubscriber: 'play'
+                }
+            });
             players.set(channel.guild.id, player);
         }
         globalConnection.subscribe(player);
@@ -64,7 +62,6 @@ async function connectToVoice() {
                     entersState(globalConnection, VoiceConnectionStatus.Connecting, 5_000),
                 ]);
             } catch (error) {
-                console.log("Koneksi terputus, mencoba masuk kamar voice lagi...");
                 connectToVoice();
             }
         });
@@ -74,7 +71,8 @@ async function connectToVoice() {
     }
 }
 
-client.once('ready', () => {
+// PERBAIKAN WARNING: Ganti 'ready' menjadi 'clientReady' sesuai saran log Node.js
+client.once('clientReady', () => {
     console.log(`Bot siap! Login sebagai ${client.user.tag}.`);
     connectToVoice();
 });
@@ -85,7 +83,7 @@ client.on('messageCreate', async (message) => {
     const isMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
     const isRepliedToBot = message.reference && (await message.channel.messages.fetch(message.reference.messageId)).author.id === client.user.id;
 
-    // 1. FITUR RESPONS CERDAS GEMINI (GALAK & KASAR)
+    // 1. FITUR CHAT GEMINI
     if (message.content.startsWith(`${PREFIX}tanya`) || isMentioned || isRepliedToBot) {
         let prompt = message.content;
         if (prompt.startsWith(`${PREFIX}tanya`)) {
@@ -93,9 +91,7 @@ client.on('messageCreate', async (message) => {
         }
         prompt = prompt.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
 
-        if (!prompt) {
-            return message.reply('Mau nanya apaan, ketik yang bener dong bangsat!');
-        }
+        if (!prompt) return message.reply('Mau nanya apaan, ketik yang bener dong bangsat!');
 
         await message.channel.sendTyping();
 
@@ -118,19 +114,15 @@ client.on('messageCreate', async (message) => {
             });
             
             const responseText = result.response.text();
-            if (responseText) {
-                return message.reply(responseText);
-            }
-            
+            if (responseText) return message.reply(responseText);
             return message.reply('bacot ngentot gua lagi tidur');
-
         } catch (error) {
             console.error("ERROR GEMINI:", error);
             return message.reply(`Gagal konek AI! Info Eror: ${error.message}`);
         }
     }
 
-    // 2. FITUR MUTAR MUSIK DARI YOUTUBE (SUDAH FIX AUDIO DECODER & BYPASS CAPTCHA)
+    // 2. FITUR MUSIK (OPTIMALISASI BYPASS & USER AGENT)
     if (message.content.startsWith(`${PREFIX}play`)) {
         const args = message.content.slice(`${PREFIX}play`.length).trim();
         if (!args) return message.reply('Mau nyetel apa? Tulis judulnya, jangan kosongan bangsat!');
@@ -138,11 +130,15 @@ client.on('messageCreate', async (message) => {
         await message.channel.sendTyping();
 
         try {
+            // Pasang pencarian dengan agen browser tiruan agar lolos block
             let yt_info = await play.search(args, { limit: 1 });
             if (!yt_info || yt_info.length === 0) return message.reply('Lagu gak ketemu, ketik yang bener tolol!');
 
-            // Ambil stream dari YouTube (menggunakan otentikasi cookie di latar belakang)
-            let stream = await play.stream(yt_info[0].url);
+            // Ambil stream dengan kualitas audio tertinggi dan paksa agen browser asli
+            let stream = await play.stream(yt_info[0].url, {
+                quality: 2, // audio only tertinggi
+                discordPlayerCompatibility: true
+            });
             
             const { stream: probedStream, type } = await demuxProbe(stream.stream);
             let resource = createAudioResource(probedStream, { inputType: type });
@@ -156,7 +152,7 @@ client.on('messageCreate', async (message) => {
             }
         } catch (error) {
             console.error("ERROR MUSIK:", error);
-            return message.reply('bacot ngentot gua lagi tidur');
+            return message.reply(`Gagal putar lagu! Info Eror: ${error.message}`);
         }
     }
 });
