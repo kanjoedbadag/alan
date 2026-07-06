@@ -1,10 +1,9 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
-const { GoogleGenAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require('@google/generative-ai'); // Perbaikan nama class di sini
 const play = require('play-dl');
 require('dotenv').config();
 
-// Inisialisasi Discord Client
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -14,14 +13,14 @@ const client = new Client({
     ]
 });
 
-// Inisialisasi Google Gemini API
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+// Inisialisasi menggunakan GoogleGenerativeAI yang benar
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const PREFIX = '!';
 const players = new Map();
 let globalConnection = null;
 
-// Fungsi otomatis masuk dan diam di Voice Channel (Stasioner)
+// Fungsi otomatis masuk ke Voice Channel
 async function connectToVoice() {
     const channelId = process.env.VOICE_CHANNEL_ID;
     if (!channelId) {
@@ -50,7 +49,6 @@ async function connectToVoice() {
         }
         globalConnection.subscribe(player);
 
-        // Anti-putus: Kalau ditendang atau DC, langsung masuk lagi otomatis
         globalConnection.on(VoiceConnectionStatus.Disconnected, async () => {
             try {
                 await Promise.race([
@@ -77,11 +75,10 @@ client.once('ready', () => {
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
-    // Deteksi jika bot di-mention atau di-reply pesannya
     const isMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
     const isRepliedToBot = message.reference && (await message.channel.messages.fetch(message.reference.messageId)).author.id === client.user.id;
 
-    // 1. FITUR PINTAR GEMINI DENGAN PERSONA GALAK (Ketik !tanya, Mention, atau Reply)
+    // 1. FITUR PINTAR GEMINI DENGAN PERSONA GALAK
     if (message.content.startsWith(`${PREFIX}tanya`) || isMentioned || isRepliedToBot) {
         let prompt = message.content;
         if (prompt.startsWith(`${PREFIX}tanya`)) {
@@ -98,8 +95,8 @@ client.on('messageCreate', async (message) => {
         await message.channel.sendTyping();
 
         try {
-            // Menggunakan Gemini 1.5 Flash yang sangat cepat merespons
-            const model = ai.getGenerativeModel({ 
+            // Menggunakan Gemini 1.5 Flash
+            const model = genAI.getGenerativeModel({ 
                 model: 'gemini-1.5-flash',
                 systemInstruction: 'Nama kamu adalah Bot Galak. Kamu adalah asisten Discord yang sangat kasar, galak, suka membentak, menggunakan kata-kata tajam/kasar khas tongkrongan Indonesia (seperti tolol, begok, bangsat, bacot, beban, dll), tidak suka basa-basi, langsung to the point, dan menganggap user bodoh atau merepotkan. Jawab dengan sangat singkat, padat, dan ketus.'
             });
@@ -111,7 +108,6 @@ client.on('messageCreate', async (message) => {
 
         } catch (error) {
             console.error(error);
-            // Sesuai request: Jika limit/error, keluarkan kata azimat ini
             return message.reply('bacot ngentot gua lagi tidur');
         }
     }
