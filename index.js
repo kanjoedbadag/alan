@@ -21,7 +21,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "KOSONG");
 const PREFIX = '!';
 const players = new Map();
 
-client.once('clientReady', () => {
+// Diperbaiki dari 'clientReady' ke 'ready' agar event berjalan normal di d.js v14
+client.once('ready', () => {
     console.log(`Bot siap! Login sebagai ${client.user.tag}.`);
 });
 
@@ -56,7 +57,25 @@ client.on('messageCreate', async (message) => {
             const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], safetySettings: safetySettings });
             return message.reply(result.response.text() || 'bacot ngentot gua lagi tidur');
         } catch (error) {
-            return message.reply(`Gagal konek AI! Info Eror: ${error.message}`);
+            // Log internal ke konsol server/Railway untuk debugging kita
+            console.error("LOG TEKNIS EROR BOT GALAK:", error.message);
+            
+            const errorText = error.message ? error.message.toLowerCase() : "";
+
+            // BLOCKER OTOMATIS JIKA KUOTA AI HABIS (LIMIT 429)
+            if (
+                errorText.includes("429") || 
+                errorText.includes("quota") || 
+                errorText.includes("limit") || 
+                errorText.includes("requests") || 
+                errorText.includes("exceeded")
+            ) {
+                // Teks eror panjang disembunyikan, diganti respon ngamuk khas bot galak
+                return message.reply('BACUT! Kuota nanya gua lagi abis diporotin ama lu pada! Nanya lagi ntar gua lagi males mikir bangsat! 🖕');
+            }
+            
+            // Respon jika ada kendala koneksi atau eror di luar kuota habis
+            return message.reply('Sistem gua lagi eror tot, jorok bener lu nanyanya! 😤');
         }
     }
 
