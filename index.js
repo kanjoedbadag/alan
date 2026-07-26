@@ -21,8 +21,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "KOSONG");
 const PREFIX = '!';
 const players = new Map();
 
-// Diperbaiki dari 'clientReady' ke 'ready' agar event berjalan normal di d.js v14
-client.once('ready', () => {
+// Gunakan clientReady sesuai saran peringatan Node.js
+client.once('clientReady', () => {
     console.log(`Bot siap! Login sebagai ${client.user.tag}.`);
 });
 
@@ -57,12 +57,10 @@ client.on('messageCreate', async (message) => {
             const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], safetySettings: safetySettings });
             return message.reply(result.response.text() || 'bacot ngentot gua lagi tidur');
         } catch (error) {
-            // Log internal ke konsol server/Railway untuk debugging kita
             console.error("LOG TEKNIS EROR BOT GALAK:", error.message);
             
             const errorText = error.message ? error.message.toLowerCase() : "";
 
-            // BLOCKER OTOMATIS JIKA KUOTA AI HABIS (LIMIT 429)
             if (
                 errorText.includes("429") || 
                 errorText.includes("quota") || 
@@ -70,18 +68,14 @@ client.on('messageCreate', async (message) => {
                 errorText.includes("requests") || 
                 errorText.includes("exceeded")
             ) {
-                // Teks eror panjang disembunyikan, diganti respon ngamuk khas bot galak
                 return message.reply('BACUT! Kuota nanya gua lagi abis diporotin ama lu pada! Nanya lagi ntar gua lagi males mikir bangsat! 🖕');
             }
             
-            // Respon jika ada kendala koneksi atau eror di luar kuota habis
             return message.reply('Sistem gua lagi eror tot, jorok bener lu nanyanya! 😤');
         }
     }
 
-    // ==========================================
-    // 2. COMAND BARU: !join (SURUH BOT MASUK VC)
-    // ==========================================
+    // 2. COMMAND !join
     if (message.content.startsWith(`${PREFIX}join`)) {
         const voiceChannel = message.member.voice.channel;
         if (!voiceChannel) {
@@ -89,22 +83,23 @@ client.on('messageCreate', async (message) => {
         }
 
         try {
-            joinVoiceChannel({
+            const connection = joinVoiceChannel({
                 channelId: voiceChannel.id,
                 guildId: message.guild.id,
                 adapterCreator: message.guild.voiceAdapterCreator,
                 selfDeaf: false
             });
+
+            // Menunggu koneksi voice benar-benar siap
+            await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
             return message.reply(`Gua udah masuk ke kamar **${voiceChannel.name}**, nih. Puas lu?!`);
         } catch (error) {
-            console.error(error);
-            return message.reply('Gagal masuk voice, cek permissions role gua di server!');
+            console.error("Gagal Join VC:", error);
+            return message.reply('Gagal masuk voice! Cek izin bot atau coba lagi nanti.');
         }
     }
 
-    // ==========================================
-    // 3. COMAND BARU: !leave / !dc (USIR BOT DARI VC)
-    // ==========================================
+    // 3. COMMAND !leave / !dc
     if (message.content.startsWith(`${PREFIX}leave`) || message.content.startsWith(`${PREFIX}dc`)) {
         const connection = getVoiceConnection(message.guild.id);
         if (!connection) {
