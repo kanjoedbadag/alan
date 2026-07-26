@@ -1,29 +1,63 @@
 const { Client, GatewayIntentBits } = require('discord.js');
-const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, VoiceConnectionStatus, entersState, demuxProbe, getVoiceConnection } = require('@discordjs/voice');
+const { joinVoiceChannel, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
-const play = require('play-dl');
 require('dotenv').config();
-
-if (process.env.YT_COOKIE) {
-    play.setToken({ youtube: { cookie: process.env.YT_COOKIE } });
-}
 
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates 
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "KOSONG");
-const PREFIX = '!';
-const players = new Map();
+const PREFIX = '.'; 
+let globalConnection = null;
 
-// Gunakan clientReady sesuai saran peringatan Node.js
+// FUNGSI UNTUK BOT OTOMATIS STAY DI VOICE CHANNEL 24/7
+async function keepAliveInVoice() {
+    const channelId = process.env.VOICE_CHANNEL_ID;
+    if (!channelId) {
+        console.log("Peringatan: VOICE_CHANNEL_ID belum diisi!");
+        return;
+    }
+
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (!channel || !channel.isVoiceBased()) return;
+
+        globalConnection = joinVoiceChannel({
+            channelId: channel.id,
+            guildId: channel.guild.id,
+            adapterCreator: channel.guild.voiceAdapterCreator,
+            selfDeaf: false
+        });
+
+        console.log(`Bot Sunda berhasil stay di VC: ${channel.name}`);
+
+        // Reconnect otomatis kalau terputus
+        globalConnection.on(VoiceConnectionStatus.Disconnected, async () => {
+            try {
+                await Promise.race([
+                    entersState(globalConnection, VoiceConnectionStatus.Signalling, 5_000),
+                    entersState(globalConnection, VoiceConnectionStatus.Connecting, 5_000),
+                ]);
+            } catch (error) {
+                console.log("Koneksi VC putus, nyoba masuk lagi...");
+                keepAliveInVoice();
+            }
+        });
+
+    } catch (e) {
+        console.error("Gagal masuk ke Voice Channel:", e);
+    }
+}
+
 client.once('clientReady', () => {
-    console.log(`Bot siap! Login sebagai ${client.user.tag}.`);
+    console.log(`Bot Sunda Siap! Login sebagai ${client.user.tag}`);
+    keepAliveInVoice(); 
 });
 
 client.on('messageCreate', async (message) => {
@@ -32,16 +66,22 @@ client.on('messageCreate', async (message) => {
     const isMentioned = message.mentions.has(client.user) && !message.mentions.everyone;
     const isRepliedToBot = message.reference && (await message.channel.messages.fetch(message.reference.messageId)).author.id === client.user.id;
 
-    // 1. FITUR CHAT AI GEMINI
-    if (message.content.startsWith(`${PREFIX}tanya`) || isMentioned || isRepliedToBot) {
+    if (message.content.startsWith(PREFIX) || isMentioned || isRepliedToBot) {
         let prompt = message.content;
-        if (prompt.startsWith(`${PREFIX}tanya`)) prompt = prompt.slice(`${PREFIX}tanya`.length).trim();
+        
+        if (prompt.startsWith(PREFIX)) {
+            prompt = prompt.slice(PREFIX.length).trim();
+        }
         prompt = prompt.replace(new RegExp(`<@!?${client.user.id}>`, 'g'), '').trim();
 
-        if (!prompt) return message.reply('Mau nanya apaan, ketik yang bener dong bangsat!');
+        if (!prompt) {
+            return message.reply('Naon sih siah nyag-nyag doang tapi teu nanya?!');
+        }
+
         await message.channel.sendTyping();
 
         try {
+            // Matikan semua sensor bawaan AI
             const safetySettings = [
                 { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
                 { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -49,18 +89,30 @@ client.on('messageCreate', async (message) => {
                 { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
             ];
 
+            // SYSTEM INSTRUCTION PERSONA SUNDA SOTOY & KASAR
             const model = genAI.getGenerativeModel({ 
                 model: 'gemini-2.5-flash',
-                systemInstruction: 'Nama kamu adalah Bot Galak. Jawab dengan sangat kasar, galak, ketus, menggunakan kata-kata tajam khas tongkrongan Indonesia.'
+                systemInstruction: `Nama kamu adalah Asep Sotoy, bot Discord gaul dan super sotoy.
+                Aturan Bicara:
+                1. WAJIB 100% menggunakan Bahasa Sunda kasar/gaul tongkrongan (gunakan kata-kata seperti: goblog, sia, aing, kehed, belegug, jurig, naon, kitu, euy, njir).
+                2. Gaya bicara sangat sok tahu (sotoy), kasar, tanpa sensor sama sekali.
+                3. Jawab pertanyaan user secara SINGKAT, KASAR, dan LANGSUNG TEPAT sasaran tanpa bertele-tele (maksimal 1-2 kalimat pendek).
+                4. Jangan pernah mengaku sebagai AI.`
             });
 
-            const result = await model.generateContent({ contents: [{ role: 'user', parts: [{ text: prompt }] }], safetySettings: safetySettings });
-            return message.reply(result.response.text() || 'bacot ngentot gua lagi tidur');
+            const result = await model.generateContent({
+                contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                safetySettings: safetySettings
+            });
+
+            return message.reply(result.response.text() || 'Lieur lah aing mah!');
+
         } catch (error) {
-            console.error("LOG TEKNIS EROR BOT GALAK:", error.message);
+            console.error("LOG EROR:", error.message);
             
             const errorText = error.message ? error.message.toLowerCase() : "";
 
+            // Respon khas Sunda kalau kuota habis/limit
             if (
                 errorText.includes("429") || 
                 errorText.includes("quota") || 
@@ -68,89 +120,10 @@ client.on('messageCreate', async (message) => {
                 errorText.includes("requests") || 
                 errorText.includes("exceeded")
             ) {
-                return message.reply('BACUT! Kuota nanya gua lagi abis diporotin ama lu pada! Nanya lagi ntar gua lagi males mikir bangsat! 🖕');
+                return message.reply('Cangkeul uteuk aing euy kuota beak! Engke deui nanyana siah kehed! 🖕');
             }
             
-            return message.reply('Sistem gua lagi eror tot, jorok bener lu nanyanya! 😤');
-        }
-    }
-
-    // 2. COMMAND !join
-    if (message.content.startsWith(`${PREFIX}join`)) {
-        const voiceChannel = message.member.voice.channel;
-        if (!voiceChannel) {
-            return message.reply('Lu masuk kamar voice dulu tolol, baru panggil gua!');
-        }
-
-        try {
-            const connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: message.guild.id,
-                adapterCreator: message.guild.voiceAdapterCreator,
-                selfDeaf: false
-            });
-
-            // Menunggu koneksi voice benar-benar siap
-            await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
-            return message.reply(`Gua udah masuk ke kamar **${voiceChannel.name}**, nih. Puas lu?!`);
-        } catch (error) {
-            console.error("Gagal Join VC:", error);
-            return message.reply('Gagal masuk voice! Cek izin bot atau coba lagi nanti.');
-        }
-    }
-
-    // 3. COMMAND !leave / !dc
-    if (message.content.startsWith(`${PREFIX}leave`) || message.content.startsWith(`${PREFIX}dc`)) {
-        const connection = getVoiceConnection(message.guild.id);
-        if (!connection) {
-            return message.reply('Gua aja lagi gak di kamar voice mana-mana, pea!');
-        }
-
-        connection.destroy();
-        return message.reply('Gua cabut! Males juga gua nongkrong ama lu pada.');
-    }
-
-    // 4. FITUR MUSIK (!play)
-    if (message.content.startsWith(`${PREFIX}play`)) {
-        const args = message.content.slice(`${PREFIX}play`.length).trim();
-        if (!args) return message.reply('Mau nyetel apa? Tulis judulnya, jangan kosongan bangsat!');
-
-        const voiceChannel = message.member.voice.channel;
-        if (!voiceChannel) {
-            return message.reply('Lu masuk kamar voice dulu tolol, gimana mau dengerin lagu!');
-        }
-
-        await message.channel.sendTyping();
-
-        try {
-            let yt_info = await play.search(args, { limit: 1 });
-            if (!yt_info || yt_info.length === 0) return message.reply('Lagu gak ketemu, ketik yang bener tolol!');
-
-            let stream = await play.stream(yt_info[0].url, { discordPlayerCompatibility: true });
-            const { stream: probedStream, type } = await demuxProbe(stream.stream);
-            let resource = createAudioResource(probedStream, { inputType: type });
-
-            const connection = joinVoiceChannel({
-                channelId: voiceChannel.id,
-                guildId: message.guild.id,
-                adapterCreator: message.guild.voiceAdapterCreator,
-                selfDeaf: false
-            });
-
-            let player = players.get(message.guild.id);
-            if (!player) {
-                player = createAudioPlayer();
-                players.set(message.guild.id, player);
-            }
-
-            connection.subscribe(player);
-            player.play(resource);
-
-            message.reply(`Nih gw setelin **${yt_info[0].title}** di kamar **${voiceChannel.name}**. Diem lu!`);
-
-        } catch (error) {
-            console.error("ERROR MUSIK:", error);
-            return message.reply(`Gagal putar lagu! Masalah IP Server Terblokir (429) atau bot lu ga dikasih izin connect.`);
+            return message.reply('Eror euy, lieur aing mah! 😤');
         }
     }
 });
