@@ -1,8 +1,26 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const { joinVoiceChannel, VoiceConnectionStatus, entersState } = require('@discordjs/voice');
 const { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
+const express = require('express');
 require('dotenv').config();
 
+// ==========================================
+// 1. WEB SERVER EXPRESS (Agar Aktif 24/7 di Render)
+// ==========================================
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.send('Bot Asep Sotoy Siap Tempur 24/7!');
+});
+
+app.listen(PORT, () => {
+    console.log(`Web Server aktif di port ${PORT}`);
+});
+
+// ==========================================
+// 2. INITIALIZATION DISCORD & GEMINI AI
+// ==========================================
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -55,11 +73,15 @@ async function keepAliveInVoice() {
     }
 }
 
-client.once('clientReady', () => {
+// PERBAIKAN: Mengubah 'clientReady' menjadi 'ready' (standar discord.js v14)
+client.once('ready', () => {
     console.log(`Bot Sunda Siap! Login sebagai ${client.user.tag}`);
     keepAliveInVoice(); 
 });
 
+// ==========================================
+// 3. MESSAGE EVENT HANDLER (GEMINI AI)
+// ==========================================
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
@@ -81,7 +103,7 @@ client.on('messageCreate', async (message) => {
         await message.channel.sendTyping();
 
         try {
-            // Matikan semua sensor bawaan AI
+            // Safety settings
             const safetySettings = [
                 { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
                 { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -112,7 +134,6 @@ client.on('messageCreate', async (message) => {
             
             const errorText = error.message ? error.message.toLowerCase() : "";
 
-            // Respon khas Sunda kalau kuota habis/limit
             if (
                 errorText.includes("429") || 
                 errorText.includes("quota") || 
